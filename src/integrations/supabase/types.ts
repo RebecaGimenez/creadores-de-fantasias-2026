@@ -14,13 +14,88 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      products: {
+        Row: {
+          cantidad: number
+          codigo: string
+          created_at: string
+          nombre: string
+          precio: number
+        }
+        Insert: {
+          cantidad?: number
+          codigo: string
+          created_at?: string
+          nombre: string
+          precio?: number
+        }
+        Update: {
+          cantidad?: number
+          codigo?: string
+          created_at?: string
+          nombre?: string
+          precio?: number
+        }
+        Relationships: []
+      }
+      sales: {
+        Row: {
+          cantidad: number
+          codigo: string
+          created_at: string
+          created_by: string | null
+          fecha: string
+          id: string
+          nombre: string
+          precio: number
+        }
+        Insert: {
+          cantidad: number
+          codigo: string
+          created_at?: string
+          created_by?: string | null
+          fecha: string
+          id?: string
+          nombre: string
+          precio: number
+        }
+        Update: {
+          cantidad?: number
+          codigo?: string
+          created_at?: string
+          created_by?: string | null
+          fecha?: string
+          id?: string
+          nombre?: string
+          precio?: number
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      register_sale: {
+        Args: { p_cantidad: number; p_codigo: string; p_fecha: string }
+        Returns: {
+          cantidad: number
+          codigo: string
+          created_at: string
+          created_by: string | null
+          fecha: string
+          id: string
+          nombre: string
+          precio: number
+        }
+        SetofOptions: {
+          from: "*"
+          to: "sales"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      undo_sale: { Args: { p_id: string }; Returns: undefined }
     }
     Enums: {
       [_ in never]: never
