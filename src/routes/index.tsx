@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import logo from "@/assets/creadores-logo.png.asset.json";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -55,7 +56,10 @@ function Index() {
     <div className="min-h-screen bg-background font-sans text-foreground">
       <header className="bg-primary text-primary-foreground">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
-          <button onClick={() => setView("home")} className="text-lg font-bold">📊 Control de Mercadería</button>
+          <button onClick={() => setView("home")} className="flex items-center gap-2 text-lg font-bold">
+            <img src={logo.url} alt="Creadores de Fantasías" className="h-12 w-12 rounded-full border-2 border-header-cell" />
+            Control de Mercadería
+          </button>
           {view !== "home" && (
             <button onClick={() => setView("home")} className="rounded border border-primary-foreground/40 px-3 py-1 text-sm">
               ← Carpetas
@@ -65,10 +69,13 @@ function Index() {
       </header>
       <main className="mx-auto max-w-5xl px-4 py-6">
         {view === "home" && (
+          <>
+          <img src={logo.url} alt="Creadores de Fantasías — Decoración navideña artesanal" className="mx-auto mb-6 w-56" />
           <div className="grid gap-4 sm:grid-cols-2">
             <Folder title="Stock de productos" icon="📦" sub={`${products.length} productos`} onClick={() => setView("stock")} />
             <Folder title="Productos vendidos" icon="🧾" sub={`${new Set(sales.map((s) => s.fecha)).size} días registrados`} onClick={() => setView("ventas")} />
           </div>
+          </>
         )}
         {view === "stock" && <StockView products={products} setProducts={setProducts} />}
         {view === "ventas" && <SalesView products={products} setProducts={setProducts} sales={sales} setSales={setSales} />}
