@@ -1,4 +1,4 @@
-import { createFileRoute, navigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import logo from "@/assets/creadores-logo.png.asset.json";
@@ -46,7 +46,7 @@ async function fetchAll<T extends Record<string, unknown>>(
     for (const o of order) query = query.order(o.column, { ascending: o.ascending });
     const { data, error } = await query.range(from, from + PAGE - 1);
     if (error) throw new Error(error.message);
-    out.push(...(((data ?? []) as T[])));
+    out.push(...((data ?? []) as unknown as T[]));
     if (!data || data.length < PAGE) break;
   }
   return out;
@@ -162,9 +162,10 @@ function InventoryApp() {
     };
   }, [load]);
 
+  const nav = useNavigate();
   const signOut = async () => {
     await supabase.auth.signOut();
-    navigate({ to: "/" });
+    nav({ to: "/" });
   };
 
   return (
