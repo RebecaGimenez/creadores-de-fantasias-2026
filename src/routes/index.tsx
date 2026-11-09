@@ -1,325 +1,250 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useEffect, useState, type FormEvent } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { lovable } from "@/integrations/lovable/index";
 import logo from "@/assets/creadores-logo.png.asset.json";
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Control de Mercadería — Stock y Ventas" },
-      { name: "description", content: "Registrá stock, cargá ventas diarias y mirá lo recaudado en planillas tipo Excel." },
-      { property: "og:title", content: "Control de Mercadería" },
-      { property: "og:description", content: "Stock, ventas diarias y acumulado en planillas tipo Excel." },
+      { title: "Entrar — Control de Mercadería de Creadores de Fantasías" },
+      {
+        name: "description",
+        content:
+          "Entrá a tu control de mercadería: stock, ventas del día y lo recaudado, compartidos entre el celular y la compu.",
+      },
+      { property: "og:title", content: "Control de Mercadería — Creadores de Fantasías" },
+      {
+        property: "og:description",
+        content: "Stock, ventas diarias y lo recaudado, compartidos entre todos tus aparatos.",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
     ],
   }),
-  component: Index,
+  component: SignIn,
 });
 
-type Product = { codigo: string; nombre: string; cantidad: number; precio: number };
-type Sale = { id: string; fecha: string; codigo: string; nombre: string; cantidad: number; precio: number };
+const input =
+  "w-full rounded border border-grid bg-card px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary";
+const btn =
+  "rounded bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50";
 
-const today = () => {
-  const d = new Date();
-  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
-};
-const money = (n: number) => n.toLocaleString("es-AR", { style: "currency", currency: "ARS" });
-const fmtDate = (f: string) => f.split("-").reverse().join("/");
+function SignIn() {
+  const nav = useNavigate();
+  const [mode, setMode] = useState<"login" | "signup">("login");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [msg, setMsg] = useState("");
+  const [notice, setNotice] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [recovery, setRecovery] = useState(false);
 
-function useStored<T>(key: string, init: T) {
-  const [v, setV] = useState<T>(init);
-  const [ready, setReady] = useState(false);
   useEffect(() => {
-    const raw = localStorage.getItem(key);
-    if (raw) setV(JSON.parse(raw));
-    setReady(true);
-  }, [key]);
-  useEffect(() => {
-    if (ready) localStorage.setItem(key, JSON.stringify(v));
-  }, [key, v, ready]);
-  return [v, setV] as const;
-}
+    const isRecovery = new URLSearchParams(window.location.search).get("recovery") === "1";
+    setRecovery(isRecovery);
+    supabase.auth.getSession().then(({ data }) => {
+      if (data.session && !isRecovery) nav({ to: "/app" });
+    });
+  }, [nav]);
 
-async function exportXlsx(name: string, sheets: Record<string, (string | number)[][]>) {
-  const XLSX = await import("xlsx");
-  const wb = XLSX.utils.book_new();
-  for (const [n, rows] of Object.entries(sheets)) XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), n);
-  XLSX.writeFile(wb, name);
-}
+  const withGoogle = async () => {
+    setMsg("");
+    setNotice("");
+    const result = await lovable.auth.signInWithOAuth("google", {
+      redirect_uri: window.location.origin,
+    });
+    if (result.error) {
+      setMsg("No se pudo entrar con Google. Probá con tu correo y contraseña.");
+      return;
+    }
+    if (result.redirected) return;
+    nav({ to: "/app" });
+  };
 
-function Index() {
-  const [view, setView] = useState<"home" | "stock" | "ventas">("home");
-  const [products, setProducts] = useStored<Product[]>("cm-products", []);
-  const [sales, setSales] = useStored<Sale[]>("cm-sales", []);
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setMsg("");
+    setNotice("");
+
+    if (recovery) {
+      const { error } = await supabase.auth.updateUser({ password });
+      setBusy(false);
+      if (error) return setMsg("No se pudo cambiar la contraseña: " + error.message);
+      return nav({ to: "/app" });
+    }
+
+    if (mode === "signup") {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: { emailRedirectTo: window.location.origin },
+      });
+      setBusy(false);
+      if (error) return setMsg(error.message);
+      if (data.session) return nav({ to: "/app" });
+      return setNotice(
+        "Te mandamos un correo para confirmar tu cuenta. Abrí el link y después entrá desde acá.",
+      );
+    }
+
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    setBusy(false);
+    if (error) return setMsg("Correo o contraseña incorrectos.");
+    return nav({ to: "/app" });
+  };
+
+  const forgot = async () => {
+    if (!email) return setMsg("Escribí tu correo arriba y después tocá 'Olvidé mi contraseña'.");
+    setBusy(true);
+    setMsg("");
+    setNotice("");
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/?recovery=1`,
+    });
+    setBusy(false);
+    if (error) return setMsg("No se pudo enviar el correo: " + error.message);
+    setNotice("Revisá tu correo: te mandamos un link para elegir una contraseña nueva.");
+  };
 
   return (
     <div className="min-h-screen bg-background font-sans text-foreground">
       <header className="bg-primary text-primary-foreground">
-        <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
-          <button onClick={() => setView("home")} className="flex items-center gap-2 text-lg font-bold">
-            <img src={logo.url} alt="Creadores de Fantasías" className="h-12 w-12 rounded-full border-2 border-header-cell" />
-            Control de Mercadería
-          </button>
-          {view !== "home" && (
-            <button onClick={() => setView("home")} className="rounded border border-primary-foreground/40 px-3 py-1 text-sm">
-              ← Carpetas
-            </button>
-          )}
+        <div className="mx-auto flex max-w-5xl items-center gap-2 px-4 py-3 text-lg font-bold">
+          <img
+            src={logo.url}
+            alt="Creadores de Fantasías"
+            className="h-12 w-12 rounded-full border-2 border-header-cell"
+          />
+          Control de Mercadería
         </div>
       </header>
-      <main className="mx-auto max-w-5xl px-4 py-6">
-        {view === "home" && (
-          <>
-          <img src={logo.url} alt="Creadores de Fantasías — Decoración navideña artesanal" className="mx-auto mb-6 w-56" />
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Folder title="Stock de productos" icon="📦" sub={`${products.length} productos`} onClick={() => setView("stock")} />
-            <Folder title="Productos vendidos" icon="🧾" sub={`${new Set(sales.map((s) => s.fecha)).size} días registrados`} onClick={() => setView("ventas")} />
-          </div>
-          </>
-        )}
-        {view === "stock" && <StockView products={products} setProducts={setProducts} />}
-        {view === "ventas" && <SalesView products={products} setProducts={setProducts} sales={sales} setSales={setSales} />}
-      </main>
-    </div>
-  );
-}
 
-function Folder({ title, icon, sub, onClick }: { title: string; icon: string; sub: string; onClick: () => void }) {
-  return (
-    <button onClick={onClick} className="group relative rounded-lg border border-grid bg-card p-6 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
-      <span className="absolute -top-3 left-4 h-4 w-20 rounded-t-md bg-accent" />
-      <div className="text-5xl">{icon}</div>
-      <div className="mt-3 text-xl font-bold">{title}</div>
-      <div className="text-sm text-muted-foreground">{sub}</div>
-    </button>
-  );
-}
+      <main className="mx-auto max-w-md px-4 py-8">
+        <img
+          src={logo.url}
+          alt="Creadores de Fantasías — Decoración navideña artesanal"
+          className="mx-auto mb-6 w-48"
+        />
 
-const input = "w-full rounded border border-grid bg-card px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary";
-const btn = "rounded bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90";
-const btn2 = "rounded border border-primary px-3 py-2 text-sm font-semibold text-primary hover:bg-secondary";
+        <div className="rounded-lg border border-grid bg-card p-5 shadow-sm">
+          <h1 className="text-xl font-bold">
+            {recovery ? "Elegí una contraseña nueva" : mode === "login" ? "Entrar" : "Crear cuenta"}
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {recovery
+              ? "Escribí la contraseña nueva y entrás directo a tus planillas."
+              : "Entrá con la misma cuenta en cada celular y en la compu: vas a ver siempre los mismos datos."}
+          </p>
 
-function Sheet({ head, rows, foot }: { head: string[]; rows: ReactNode[][]; foot?: ReactNode[] }) {
-  return (
-    <div className="overflow-x-auto rounded border border-grid bg-card">
-      <table className="w-full border-collapse font-mono text-sm">
-        <thead>
-          <tr>
-            <th className="w-8 border border-grid bg-header-cell px-1" />
-            {head.map((h) => (
-              <th key={h} className="border border-grid bg-header-cell px-2 py-1.5 text-left font-semibold">{h}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.length === 0 && (
-            <tr><td colSpan={head.length + 1} className="border border-grid px-2 py-4 text-center text-muted-foreground">Sin datos</td></tr>
+          {!recovery && (
+            <button
+              type="button"
+              onClick={withGoogle}
+              disabled={busy}
+              className="mt-4 flex w-full items-center justify-center rounded disabled:opacity-50"
+              style={{
+                background: "#FFFFFF",
+                border: "1px solid #747775",
+                color: "#1F1F1F",
+                padding: "12px",
+                gap: "10px",
+                fontSize: "14px",
+                lineHeight: "20px",
+                fontWeight: 500,
+              }}
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                width={18}
+                height={18}
+                aria-hidden="true"
+              >
+                <path
+                  fill="#4285F4"
+                  d="M23.49 12.27c0-.79-.07-1.54-.19-2.27H12v4.51h6.47c-.29 1.48-1.14 2.73-2.4 3.58v3h3.86c2.26-2.09 3.56-5.17 3.56-8.82z"
+                />
+                <path
+                  fill="#34A853"
+                  d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.86-3c-1.08.72-2.45 1.16-4.07 1.16-3.13 0-5.78-2.11-6.73-4.96H1.29v3.09C3.26 21.3 7.31 24 12 24z"
+                />
+                <path
+                  fill="#FBBC05"
+                  d="M5.27 14.29c-.25-.72-.38-1.49-.38-2.29s.14-1.57.38-2.29V6.62H1.29C.47 8.24 0 10.06 0 12s.47 3.76 1.29 5.38l3.98-3.09z"
+                />
+                <path
+                  fill="#EA4335"
+                  d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.26 2.7 1.29 6.62l3.98 3.09c.95-2.85 3.6-4.96 6.73-4.96z"
+                />
+              </svg>
+              <span>Continuar con Google</span>
+            </button>
           )}
-          {rows.map((r, i) => (
-            <tr key={i} className="even:bg-muted">
-              <td className="border border-grid bg-header-cell px-1 text-center text-xs text-muted-foreground">{i + 1}</td>
-              {r.map((c, j) => <td key={j} className="border border-grid px-2 py-1.5 whitespace-nowrap">{c}</td>)}
-            </tr>
-          ))}
-        </tbody>
-        {foot && (
-          <tfoot>
-            <tr className="bg-secondary font-bold">
-              <td className="border border-grid" />
-              {foot.map((c, j) => <td key={j} className="border border-grid px-2 py-1.5 whitespace-nowrap">{c}</td>)}
-            </tr>
-          </tfoot>
-        )}
-      </table>
-    </div>
-  );
-}
 
-function StockView({ products, setProducts }: { products: Product[]; setProducts: (p: Product[]) => void }) {
-  const [f, setF] = useState({ codigo: "", nombre: "", cantidad: "", precio: "" });
-  const [add, setAdd] = useState({ codigo: "", cantidad: "" });
-  const [msg, setMsg] = useState("");
+          {!recovery && (
+            <div className="my-4 flex items-center gap-3 text-xs text-muted-foreground">
+              <span className="h-px flex-1 bg-grid" />
+              o con tu correo
+              <span className="h-px flex-1 bg-grid" />
+            </div>
+          )}
 
-  const create = () => {
-    if (!f.codigo || !f.nombre) return setMsg("Completá código y nombre.");
-    if (products.some((p) => p.codigo === f.codigo)) return setMsg("Ese código ya existe. Usá 'Agregar stock'.");
-    setProducts([...products, { codigo: f.codigo.trim(), nombre: f.nombre.trim(), cantidad: Number(f.cantidad) || 0, precio: Number(f.precio) || 0 }]);
-    setF({ codigo: "", nombre: "", cantidad: "", precio: "" });
-    setMsg("Producto agregado ✔");
-  };
-  const restock = () => {
-    const n = Number(add.cantidad);
-    if (!add.codigo || !n) return setMsg("Elegí producto y cantidad.");
-    setProducts(products.map((p) => (p.codigo === add.codigo ? { ...p, cantidad: p.cantidad + n } : p)));
-    setAdd({ codigo: "", cantidad: "" });
-    setMsg("Stock actualizado ✔");
-  };
-  const remove = (c: string) => confirm("¿Eliminar producto?") && setProducts(products.filter((p) => p.codigo !== c));
-  const editPrice = (c: string) => {
-    const v = prompt("Nuevo precio:");
-    if (v && !isNaN(Number(v))) setProducts(products.map((p) => (p.codigo === c ? { ...p, precio: Number(v) } : p)));
-  };
+          <form onSubmit={submit} className="space-y-2">
+            {!recovery && (
+              <input
+                className={input}
+                type="email"
+                placeholder="Correo"
+                autoComplete="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+            )}
+            <input
+              className={input}
+              type="password"
+              placeholder={recovery ? "Contraseña nueva" : "Contraseña"}
+              autoComplete={recovery ? "new-password" : mode === "signup" ? "new-password" : "current-password"}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+            <button className={`${btn} w-full`} disabled={busy}>
+              {recovery
+                ? "Guardar y entrar"
+                : mode === "login"
+                  ? "Entrar"
+                  : "Crear cuenta"}
+            </button>
+          </form>
 
-  return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-bold">📦 Stock de productos</h1>
-      <section className="rounded-lg border border-grid bg-card p-4">
-        <h2 className="mb-3 font-semibold">Nuevo producto</h2>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
-          <input className={input} placeholder="Código" value={f.codigo} onChange={(e) => setF({ ...f, codigo: e.target.value })} />
-          <input className={input} placeholder="Nombre" value={f.nombre} onChange={(e) => setF({ ...f, nombre: e.target.value })} />
-          <input className={input} type="number" placeholder="Cantidad" value={f.cantidad} onChange={(e) => setF({ ...f, cantidad: e.target.value })} />
-          <input className={input} type="number" placeholder="Precio" value={f.precio} onChange={(e) => setF({ ...f, precio: e.target.value })} />
-          <button className={btn} onClick={create}>Agregar</button>
+          {!recovery && (
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm">
+              <button
+                className="text-primary underline decoration-dotted"
+                onClick={() => {
+                  setMode(mode === "login" ? "signup" : "login");
+                  setMsg("");
+                  setNotice("");
+                }}
+              >
+                {mode === "login" ? "No tengo cuenta, crear una" : "Ya tengo cuenta, entrar"}
+              </button>
+              <button className="text-muted-foreground underline decoration-dotted" onClick={forgot}>
+                Olvidé mi contraseña
+              </button>
+            </div>
+          )}
+
+          {msg && <p className="mt-3 text-sm text-destructive">{msg}</p>}
+          {notice && <p className="mt-3 text-sm text-primary">{notice}</p>}
         </div>
-      </section>
-      <section className="rounded-lg border border-grid bg-card p-4">
-        <h2 className="mb-3 font-semibold">Agregar stock nuevo</h2>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-          <select className={`${input} col-span-2 sm:col-span-1`} value={add.codigo} onChange={(e) => setAdd({ ...add, codigo: e.target.value })}>
-            <option value="">Producto…</option>
-            {products.map((p) => <option key={p.codigo} value={p.codigo}>{p.codigo} — {p.nombre}</option>)}
-          </select>
-          <input className={input} type="number" placeholder="Cantidad" value={add.cantidad} onChange={(e) => setAdd({ ...add, cantidad: e.target.value })} />
-          <button className={btn} onClick={restock}>Sumar</button>
-        </div>
-      </section>
-      {msg && <p className="text-sm text-primary">{msg}</p>}
-      <div className="flex justify-end">
-        <button className={btn2} onClick={() => exportXlsx("stock.xlsx", { Stock: [["Código", "Producto", "Cantidad", "Precio"], ...products.map((p) => [p.codigo, p.nombre, p.cantidad, p.precio])] })}>
-          ⬇ Descargar Excel
-        </button>
-      </div>
-      <Sheet
-        head={["Código", "Producto", "Cantidad", "Precio", ""]}
-        rows={products.map((p) => [
-          p.codigo, p.nombre,
-          <span className={p.cantidad <= 0 ? "font-bold text-destructive" : ""}>{p.cantidad}</span>,
-          <button className="underline decoration-dotted" onClick={() => editPrice(p.codigo)}>{money(p.precio)}</button>,
-          <button className="text-destructive" onClick={() => remove(p.codigo)}>✕</button>,
-        ])}
-        foot={["", "Total unidades", products.reduce((a, p) => a + p.cantidad, 0), "", ""]}
-      />
-    </div>
-  );
-}
 
-function SalesView({ products, setProducts, sales, setSales }: { products: Product[]; setProducts: (p: Product[]) => void; sales: Sale[]; setSales: (s: Sale[]) => void }) {
-  const [fecha, setFecha] = useState(today());
-  const [codigo, setCodigo] = useState("");
-  const [cant, setCant] = useState("");
-  const [msg, setMsg] = useState("");
-
-  const addSale = () => {
-    const p = products.find((x) => x.codigo === codigo);
-    const n = Number(cant);
-    if (!p || !n || n < 0) return setMsg("Elegí producto y cantidad.");
-    if (n > p.cantidad) return setMsg(`Stock insuficiente: quedan ${p.cantidad}.`);
-    setProducts(products.map((x) => (x.codigo === codigo ? { ...x, cantidad: x.cantidad - n } : x)));
-    setSales([...sales, { id: crypto.randomUUID(), fecha, codigo, nombre: p.nombre, cantidad: n, precio: p.precio }]);
-    setCant("");
-    setMsg("Venta cargada ✔ (stock descontado)");
-  };
-  const undo = (s: Sale) => {
-    if (!confirm("¿Anular venta? El stock se devuelve.")) return;
-    setSales(sales.filter((x) => x.id !== s.id));
-    setProducts(products.map((x) => (x.codigo === s.codigo ? { ...x, cantidad: x.cantidad + s.cantidad } : x)));
-  };
-
-  const daily = useMemo(() => {
-    const m = new Map<string, { codigo: string; nombre: string; cantidad: number; precio: number; total: number }>();
-    sales.filter((s) => s.fecha === fecha).forEach((s) => {
-      const r = m.get(s.codigo) ?? { codigo: s.codigo, nombre: s.nombre, cantidad: 0, precio: s.precio, total: 0 };
-      r.cantidad += s.cantidad; r.total += s.cantidad * s.precio; m.set(s.codigo, r);
-    });
-    return [...m.values()];
-  }, [sales, fecha]);
-  const dayTotal = daily.reduce((a, r) => a + r.total, 0);
-  const dayQty = daily.reduce((a, r) => a + r.cantidad, 0);
-
-  const acc = useMemo(() => {
-    const m = new Map<string, { fecha: string; cantidad: number; total: number }>();
-    sales.forEach((s) => {
-      const r = m.get(s.fecha) ?? { fecha: s.fecha, cantidad: 0, total: 0 };
-      r.cantidad += s.cantidad; r.total += s.cantidad * s.precio; m.set(s.fecha, r);
-    });
-    return [...m.values()].sort((a, b) => a.fecha.localeCompare(b.fecha));
-  }, [sales]);
-  let running = 0;
-  const accRows = acc.map((r) => ({ ...r, acumulado: (running += r.total) }));
-  const grandQty = acc.reduce((a, r) => a + r.cantidad, 0);
-
-  const daySales = sales.filter((s) => s.fecha === fecha);
-
-  const download = () =>
-    exportXlsx(`ventas_${fecha}.xlsx`, {
-      [`Día ${fmtDate(fecha).replaceAll("/", "-")}`]: [["Producto", "Código", "Cantidad", "Precio", "Subtotal"], ...daily.map((r) => [r.nombre, r.codigo, r.cantidad, r.precio, r.total]), ["TOTAL", "", dayQty, "", dayTotal]],
-      Stock: [["Código", "Producto", "Cantidad en stock", "Precio"], ...products.map((p) => [p.codigo, p.nombre, p.cantidad, p.precio])],
-      Acumulado: [["Fecha", "Cantidad de productos", "Total recaudado", "Acumulado"], ...accRows.map((r) => [fmtDate(r.fecha), r.cantidad, r.total, r.acumulado]), ["TOTAL", grandQty, running, ""]],
-    });
-
-  return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-bold">🧾 Productos vendidos</h1>
-      <section className="rounded-lg border border-grid bg-card p-4">
-        <h2 className="mb-3 font-semibold">Cargar venta</h2>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          <input className={input} type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} />
-          <select className={input} value={codigo} onChange={(e) => setCodigo(e.target.value)}>
-            <option value="">Producto…</option>
-            {products.map((p) => <option key={p.codigo} value={p.codigo}>{p.codigo} — {p.nombre} ({p.cantidad})</option>)}
-          </select>
-          <input className={input} type="number" placeholder="Cantidad vendida" value={cant} onChange={(e) => setCant(e.target.value)} />
-          <button className={btn} onClick={addSale}>Cargar</button>
-        </div>
-        {msg && <p className="mt-2 text-sm text-primary">{msg}</p>}
-        {products.length === 0 && <p className="mt-2 text-sm text-muted-foreground">Primero agregá productos en la carpeta de stock.</p>}
-      </section>
-
-      <div className="grid grid-cols-2 gap-3">
-        <div className="rounded-lg bg-primary p-4 text-primary-foreground">
-          <div className="text-xs opacity-80">Recaudado el {fmtDate(fecha)}</div>
-          <div className="text-2xl font-bold">{money(dayTotal)}</div>
-        </div>
-        <div className="rounded-lg bg-accent p-4 text-accent-foreground">
-          <div className="text-xs opacity-80">Unidades vendidas</div>
-          <div className="text-2xl font-bold">{dayQty}</div>
-        </div>
-      </div>
-
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">Informe del día {fmtDate(fecha)}</h2>
-        <button className={btn2} onClick={download}>⬇ Excel</button>
-      </div>
-      <Sheet
-        head={["Producto", "Código", "Cantidad", "Precio", "Subtotal"]}
-        rows={daily.map((r) => [r.nombre, r.codigo, r.cantidad, money(r.precio), money(r.total)])}
-        foot={["TOTAL", "", dayQty, "", money(dayTotal)]}
-      />
-
-      {daySales.length > 0 && (
-        <details className="rounded border border-grid bg-card p-3 text-sm">
-          <summary className="cursor-pointer font-semibold">Ventas cargadas hoy ({daySales.length}) — anular</summary>
-          <ul className="mt-2 space-y-1">
-            {daySales.map((s) => (
-              <li key={s.id} className="flex justify-between">
-                <span>{s.nombre} × {s.cantidad}</span>
-                <button className="text-destructive" onClick={() => undo(s)}>Anular</button>
-              </li>
-            ))}
-          </ul>
-        </details>
-      )}
-
-      <h2 className="text-lg font-semibold">Productos en stock</h2>
-      <Sheet head={["Código", "Producto", "Cantidad", "Precio"]} rows={products.map((p) => [p.codigo, p.nombre, p.cantidad, money(p.precio)])} />
-
-      <h2 className="text-lg font-semibold">Acumulado (todos los días)</h2>
-      <Sheet
-        head={["Fecha", "Cant. productos", "Total recaudado", "Acumulado"]}
-        rows={accRows.map((r) => [fmtDate(r.fecha), r.cantidad, money(r.total), money(r.acumulado)])}
-        foot={["TOTAL", grandQty, money(running), ""]}
-      />
+        <p className="mt-6 text-center text-sm text-muted-foreground">
+          Tus productos y ventas quedan guardados en la nube, no en el aparato.
+        </p>
+      </main>
     </div>
   );
 }
