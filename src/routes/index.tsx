@@ -125,7 +125,7 @@ function SignIn() {
         <img
           src={logo.url}
           alt="Creadores de Fantasías — Decoración navideña artesanal"
-          className="mx-auto mb-6 w-48"
+          className="mx-auto mb-6 w-48 rounded-full"
         />
 
         <div className="rounded-lg border border-grid bg-card p-5 shadow-sm">
