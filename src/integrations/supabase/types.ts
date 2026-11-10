@@ -46,8 +46,10 @@ export type Database = {
           created_by: string | null
           fecha: string
           id: string
+          importe: number
           nombre: string
           precio: number
+          regalo: boolean
         }
         Insert: {
           cantidad: number
@@ -56,8 +58,10 @@ export type Database = {
           created_by?: string | null
           fecha: string
           id?: string
+          importe?: number
           nombre: string
           precio: number
+          regalo?: boolean
         }
         Update: {
           cantidad?: number
@@ -66,8 +70,10 @@ export type Database = {
           created_by?: string | null
           fecha?: string
           id?: string
+          importe?: number
           nombre?: string
           precio?: number
+          regalo?: boolean
         }
         Relationships: []
       }
@@ -77,7 +83,13 @@ export type Database = {
     }
     Functions: {
       register_sale: {
-        Args: { p_cantidad: number; p_codigo: string; p_fecha: string }
+        Args: {
+          p_cantidad: number
+          p_codigo: string
+          p_fecha: string
+          p_importe?: number
+          p_regalo?: boolean
+        }
         Returns: {
           cantidad: number
           codigo: string
@@ -85,8 +97,10 @@ export type Database = {
           created_by: string | null
           fecha: string
           id: string
+          importe: number
           nombre: string
           precio: number
+          regalo: boolean
         }
         SetofOptions: {
           from: "*"

@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import logo from "@/assets/creadores-logo.png.asset.json";
+const logo = { url: "/logo.png" };
 
 export const Route = createFileRoute("/_authenticated/app")({
   head: () => ({
@@ -25,7 +25,7 @@ export const Route = createFileRoute("/_authenticated/app")({
 });
 
 type Product = { codigo: string; nombre: string; cantidad: number; precio: number };
-type Sale = { id: string; fecha: string; codigo: string; nombre: string; cantidad: number; precio: number };
+type Sale = { id: string; fecha: string; codigo: string; nombre: string; cantidad: number; precio: number; importe: number; regalo: boolean };
 
 const today = () => {
   const d = new Date();
@@ -91,6 +91,7 @@ async function migrateFromThisDevice(
         nombre: String(s.nombre),
         cantidad: Number(s.cantidad) || 0,
         precio: Number(s.precio) || 0,
+        importe: (Number(s.precio) || 0) * (Number(s.cantidad) || 0),
       })),
     );
     if (error) return false;
@@ -119,7 +120,7 @@ function InventoryApp() {
       ]);
       setProducts(p.map((r) => ({ ...r, cantidad: Number(r.cantidad), precio: Number(r.precio) })));
       setSales(
-        s.map((r) => ({ ...r, cantidad: Number(r.cantidad), precio: Number(r.precio) })),
+        s.map((r) => ({ ...r, cantidad: Number(r.cantidad), precio: Number(r.precio), importe: Number(r.importe) })),
       );
       setStatus("ready");
       setError("");
@@ -133,7 +134,7 @@ function InventoryApp() {
           ]),
         ]);
         setProducts(p2.map((r) => ({ ...r, cantidad: Number(r.cantidad), precio: Number(r.precio) })));
-        setSales(s2.map((r) => ({ ...r, cantidad: Number(r.cantidad), precio: Number(r.precio) })));
+        setSales(s2.map((r) => ({ ...r, cantidad: Number(r.cantidad), precio: Number(r.precio), importe: Number(r.importe) })));
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudieron leer los datos.");
@@ -535,6 +536,8 @@ function SalesView({
   const [fecha, setFecha] = useState(today());
   const [codigo, setCodigo] = useState("");
   const [cant, setCant] = useState("");
+  const [importe, setImporte] = useState("");
+  const [regalo, setRegalo] = useState(false);
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -546,11 +549,15 @@ function SalesView({
       p_codigo: codigo,
       p_fecha: fecha,
       p_cantidad: n,
+      ...(importe.trim() === "" ? {} : { p_importe: Number(importe) }),
+      p_regalo: regalo,
     });
     setBusy(false);
     if (error) return setMsg(error.message);
     setCant("");
-    setMsg("Venta cargada ✔ (stock descontado)");
+    setImporte("");
+    setMsg(regalo ? "Regalo cargado ✔ (stock descontado, $0 en caja)" : "Venta cargada ✔ (stock descontado)");
+    setRegalo(false);
     await reload();
   };
 
@@ -565,7 +572,7 @@ function SalesView({
   };
 
   const daily = useMemo(() => {
-    const m = new Map<string, { codigo: string; nombre: string; cantidad: number; precio: number; total: number }>();
+    const m = new Map<string, { codigo: string; nombre: string; cantidad: number; regaladas: number; total: number }>();
     sales
       .filter((s) => s.fecha === fecha)
       .forEach((s) => {
@@ -573,24 +580,26 @@ function SalesView({
           codigo: s.codigo,
           nombre: s.nombre,
           cantidad: 0,
-          precio: s.precio,
+          regaladas: 0,
           total: 0,
         };
-        r.cantidad += s.cantidad;
-        r.total += s.cantidad * s.precio;
+        if (s.regalo) r.regaladas += s.cantidad;
+        else r.cantidad += s.cantidad;
+        r.total += s.importe;
         m.set(s.codigo, r);
       });
     return [...m.values()];
   }, [sales, fecha]);
   const dayTotal = daily.reduce((a, r) => a + r.total, 0);
   const dayQty = daily.reduce((a, r) => a + r.cantidad, 0);
+  const dayGifts = daily.reduce((a, r) => a + r.regaladas, 0);
 
   const acc = useMemo(() => {
     const m = new Map<string, { fecha: string; cantidad: number; total: number }>();
     sales.forEach((s) => {
       const r = m.get(s.fecha) ?? { fecha: s.fecha, cantidad: 0, total: 0 };
-      r.cantidad += s.cantidad;
-      r.total += s.cantidad * s.precio;
+      if (!s.regalo) r.cantidad += s.cantidad;
+      r.total += s.importe;
       m.set(s.fecha, r);
     });
     return [...m.values()].sort((a, b) => a.fecha.localeCompare(b.fecha));
@@ -599,6 +608,7 @@ function SalesView({
   const accRows = acc.map((r) => ({ ...r, acumulado: (running += r.total) }));
   const grandQty = acc.reduce((a, r) => a + r.cantidad, 0);
 
+  const sugerido = (products.find((p) => p.codigo === codigo)?.precio ?? 0) * (Number(cant) || 0);
   const daySales = sales.filter((s) => s.fecha === fecha);
 
   const download = async () => {
@@ -607,9 +617,9 @@ function SalesView({
     XLSX.utils.book_append_sheet(
       wb,
       XLSX.utils.aoa_to_sheet([
-        ["Producto", "Código", "Cantidad", "Precio", "Subtotal"],
-        ...daily.map((r) => [r.nombre, r.codigo, r.cantidad, r.precio, r.total]),
-        ["TOTAL", "", dayQty, "", dayTotal],
+        ["Producto", "Código", "Vendidas", "Regaladas", "Importe"],
+        ...daily.map((r) => [r.nombre, r.codigo, r.cantidad, r.regaladas, r.total]),
+        ["TOTAL", "", dayQty, dayGifts, dayTotal],
       ]),
       `Día ${fmtDate(fecha).replaceAll("/", "-")}`,
     );
@@ -661,10 +671,27 @@ function SalesView({
             value={cant}
             onChange={(e) => setCant(e.target.value)}
           />
+          <input
+            className={input}
+            type="number"
+            placeholder={regalo ? "Regalo: $0" : `Importe cobrado (${money(sugerido)})`}
+            value={regalo ? "" : importe}
+            disabled={regalo}
+            onChange={(e) => setImporte(e.target.value)}
+          />
+        </div>
+        <div className="mt-2 flex flex-wrap items-center gap-4">
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={regalo} onChange={(e) => setRegalo(e.target.checked)} />
+            🎁 Es regalo (descuenta stock, no suma dinero)
+          </label>
           <button className={btn} onClick={addSale} disabled={busy}>
             Cargar
           </button>
         </div>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Si hiciste descuento, escribí el importe que realmente cobraste. Si lo dejás vacío se usa el precio de lista.
+        </p>
         {msg && <p className="mt-2 text-sm text-primary">{msg}</p>}
         {products.length === 0 && (
           <p className="mt-2 text-sm text-muted-foreground">
@@ -691,9 +718,9 @@ function SalesView({
         </button>
       </div>
       <Sheet
-        head={["Producto", "Código", "Cantidad", "Precio", "Subtotal"]}
-        rows={daily.map((r) => [r.nombre, r.codigo, r.cantidad, money(r.precio), money(r.total)])}
-        foot={["TOTAL", "", dayQty, "", money(dayTotal)]}
+        head={["Producto", "Código", "Vendidas", "Regaladas", "Importe"]}
+        rows={daily.map((r) => [r.nombre, r.codigo, r.cantidad, r.regaladas, money(r.total)])}
+        foot={["TOTAL", "", dayQty, dayGifts, money(dayTotal)]}
       />
 
       {daySales.length > 0 && (
@@ -705,7 +732,7 @@ function SalesView({
             {daySales.map((s) => (
               <li key={s.id} className="flex justify-between">
                 <span>
-                  {s.nombre} × {s.cantidad}
+                  {s.nombre} × {s.cantidad} — {s.regalo ? "🎁 regalo" : money(s.importe)}
                 </span>
                 <button className="text-destructive" onClick={() => undo(s)}>
                   Anular

@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState, type FormEvent } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { lovable } from "@/integrations/lovable/index";
-import logo from "@/assets/creadores-logo.png.asset.json";
+const logo = { url: "/logo.png" };
 
 export const Route = createFileRoute("/")({
   head: () => ({
