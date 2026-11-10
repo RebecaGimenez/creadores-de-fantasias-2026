@@ -222,7 +222,7 @@ function InventoryApp() {
             <img
               src={logo.url}
               alt="Creadores de Fantasías — Decoración navideña artesanal"
-              className="mx-auto mb-6 w-56"
+              className="mx-auto mb-6 w-56 rounded-full"
             />
             <div className="grid gap-4 sm:grid-cols-2">
               <Folder
