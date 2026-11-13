@@ -14,6 +14,39 @@ export type Database = {
   }
   public: {
     Tables: {
+      materials: {
+        Row: {
+          cantidad: number
+          costo: number
+          created_at: string
+          id: string
+          minimo: number
+          nombre: string
+          unidad: string
+          updated_at: string
+        }
+        Insert: {
+          cantidad?: number
+          costo?: number
+          created_at?: string
+          id?: string
+          minimo?: number
+          nombre: string
+          unidad?: string
+          updated_at?: string
+        }
+        Update: {
+          cantidad?: number
+          costo?: number
+          created_at?: string
+          id?: string
+          minimo?: number
+          nombre?: string
+          unidad?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       products: {
         Row: {
           cantidad: number
