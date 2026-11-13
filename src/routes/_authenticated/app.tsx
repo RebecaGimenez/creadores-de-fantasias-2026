@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { MaterialsView } from "@/components/MaterialsView";
+import { TeamView } from "@/components/TeamView";
 const logo = { url: "/logo.png" };
 
 export const Route = createFileRoute("/_authenticated/app")({
@@ -103,7 +104,7 @@ async function migrateFromThisDevice(
 }
 
 function InventoryApp() {
-  const [view, setView] = useState<"home" | "stock" | "ventas" | "materiales">("home");
+  const [view, setView] = useState<"home" | "stock" | "ventas" | "materiales" | "equipo">("home");
   const [products, setProducts] = useState<Product[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
@@ -245,6 +246,12 @@ function InventoryApp() {
                 sub="Insumos para fabricar"
                 onClick={() => setView("materiales")}
               />
+              <Folder
+                title="Equipo"
+                icon="👥"
+                sub="Quién puede entrar"
+                onClick={() => setView("equipo")}
+              />
             </div>
             <p className="mt-6 text-center text-sm text-muted-foreground">
               Estos datos se comparten entre todos los celulares y la compu donde entres con tu cuenta.
@@ -259,6 +266,7 @@ function InventoryApp() {
           <SalesView products={products} sales={sales} reload={load} />
         )}
         {status === "ready" && view === "materiales" && <MaterialsView />}
+        {status === "ready" && view === "equipo" && <TeamView />}
       </main>
     </div>
   );

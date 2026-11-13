@@ -110,6 +110,24 @@ export type Database = {
         }
         Relationships: []
       }
+      team_invites: {
+        Row: {
+          created_at: string
+          email: string
+          invited_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          invited_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          invited_by?: string | null
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           id: string
@@ -133,12 +151,20 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      add_team_member: { Args: { _email: string }; Returns: string }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
           _user_id: string
         }
         Returns: boolean
+      }
+      list_team: {
+        Args: never
+        Returns: {
+          email: string
+          estado: string
+        }[]
       }
       register_sale: {
         Args: {
@@ -167,6 +193,7 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      remove_team_member: { Args: { _email: string }; Returns: undefined }
       undo_sale: { Args: { p_id: string }; Returns: undefined }
     }
     Enums: {
